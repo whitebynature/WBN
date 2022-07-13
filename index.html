@@ -1,599 +1,208 @@
-<!--
-  Copyright 2021 Google LLC
 
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
 
-      https://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
--->
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Locator</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
-    <script src="https://ajax.googleapis.com/ajax/libs/handlebars/4.7.7/handlebars.min.js"></script>
-    <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
-    <style>
-      html,
-      body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-      }
-
-      #map-container {
-        width: 100%;
-        height: 100%;
-        position: relative;
-        font-family: "Roboto", sans-serif;
-        box-sizing: border-box;
-      }
-
-      #map-container a {
-        text-decoration: none;
-        color: #1967d2;
-      }
-
-      #map-container button {
-        background: none;
-        color: inherit;
-        border: none;
-        padding: 0;
-        font: inherit;
-        font-size: inherit;
-        cursor: pointer;
-      }
-
-      #gmp-map {
-        position: absolute;
-        left: 22em;
-        top: 0;
-        right: 0;
-        bottom: 0;
-      }
-
-      #locations-panel {
-        position: absolute;
-        left: 0;
-        width: 22em;
-        top: 0;
-        bottom: 0;
-        overflow-y: auto;
-        background: white;
-        padding: 0.5em;
-        box-sizing: border-box;
-      }
-
-      @media only screen and (max-width: 876px) {
-        #gmp-map {
-          left: 0;
-          bottom: 50%;
-        }
-
-        #locations-panel {
-          top: 50%;
-          right: 0;
-          width: unset;
-        }
-      }
-
-      #locations-panel-list > header {
-        padding: 1.4em 1.4em 0 1.4em;
-      }
-
-      #locations-panel-list h1.search-title {
-        font-size: 1em;
-        font-weight: 500;
-        margin: 0;
-      }
-
-      #locations-panel-list h1.search-title > img {
-        vertical-align: bottom;
-        margin-top: -1em;
-      }
-
-      #locations-panel-list .search-input {
-        width: 100%;
-        margin-top: 0.8em;
-        position: relative;
-      }
-
-      #locations-panel-list .search-input input {
-        width: 100%;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 0.3em;
-        height: 2.2em;
-        box-sizing: border-box;
-        padding: 0 2.5em 0 1em;
-        font-size: 1em;
-      }
-
-      #locations-panel-list .search-input-overlay {
-        position: absolute;
-      }
-
-      #locations-panel-list .search-input-overlay.search {
-        right: 2px;
-        top: 2px;
-        bottom: 2px;
-        width: 2.4em;
-      }
-
-      #locations-panel-list .search-input-overlay.search button {
-        width: 100%;
-        height: 100%;
-        border-radius: 0.2em;
-        color: black;
-        background: transparent;
-      }
-
-      #locations-panel-list .search-input-overlay.search .icon {
-        margin-top: 0.05em;
-        vertical-align: top;
-      }
-
-      #locations-panel-list .section-name {
-        font-weight: 500;
-        font-size: 0.9em;
-        margin: 1.8em 0 1em 1.5em;
-      }
-
-      #locations-panel-list .location-result {
-        position: relative;
-        padding: 0.8em 3.5em 0.8em 1.4em;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-        cursor: pointer;
-      }
-
-      #locations-panel-list .location-result:first-of-type {
-        border-top: 1px solid rgba(0, 0, 0, 0.12);
-      }
-
-      #locations-panel-list .location-result:last-of-type {
-        border-bottom: none;
-      }
-
-      #locations-panel-list .location-result.selected {
-        outline: 2px solid #4285f4;
-      }
-
-      #locations-panel-list button.select-location {
-        margin-bottom: 0.6em;
-        text-align: left;
-      }
-
-      #locations-panel-list .location-result h2.name {
-        font-size: 1em;
-        font-weight: 500;
-        margin: 0;
-      }
-
-      #locations-panel-list .location-result .address {
-        font-size: 0.9em;
-        margin-bottom: 0.5em;
-      }
-
-      #locations-panel-list .directions-button {
-        position: absolute;
-        right: 1.2em;
-        top: 2.3em;
-      }
-
-      #locations-panel-list .directions-button-background:hover {
-        fill: rgba(116,120,127,0.1);
-      }
-
-      #locations-panel-list .directions-button-background {
-        fill: rgba(255,255,255,0.01);
-      }
-
-      #locations-panel-list .location-result .distance {
-        position: absolute;
-        top: 0.9em;
-        right: 0;
-        text-align: center;
-        font-size: 0.9em;
-        width: 5em;
-      }
-
-      #location-results-list {
-        list-style-type: none;
-        margin: 0;
-        padding: 0;
-      }
-    </style>
-    <script>
-      'use strict';
-
-      /** Helper function to generate a Google Maps directions URL */
-      function generateDirectionsURL(origin, destination) {
-        const googleMapsUrlBase = 'https://www.google.com/maps/dir/?';
-        const searchParams = new URLSearchParams('api=1');
-        searchParams.append('origin', origin);
-        const destinationParam = [];
-        // Add title to destinationParam except in cases where Quick Builder set
-        // the title to the first line of the address
-        if (destination.title !== destination.address1) {
-          destinationParam.push(destination.title);
-        }
-        destinationParam.push(destination.address1, destination.address2);
-        searchParams.append('destination', destinationParam.join(','));
-        return googleMapsUrlBase + searchParams.toString();
-      }
-
-      /**
-       * Defines an instance of the Locator+ solution, to be instantiated
-       * when the Maps library is loaded.
-       */
-      function LocatorPlus(configuration) {
-        const locator = this;
-
-        locator.locations = configuration.locations || [];
-        locator.capabilities = configuration.capabilities || {};
-
-        const mapEl = document.getElementById('gmp-map');
-        const panelEl = document.getElementById('locations-panel');
-        locator.panelListEl = document.getElementById('locations-panel-list');
-        const sectionNameEl =
-            document.getElementById('location-results-section-name');
-        const resultsContainerEl = document.getElementById('location-results-list');
-
-        const itemsTemplate = Handlebars.compile(
-            document.getElementById('locator-result-items-tmpl').innerHTML);
-
-        locator.searchLocation = null;
-        locator.searchLocationMarker = null;
-        locator.selectedLocationIdx = null;
-        locator.userCountry = null;
-
-        // Initialize the map -------------------------------------------------------
-        locator.map = new google.maps.Map(mapEl, configuration.mapOptions);
-
-        // Store selection.
-        const selectResultItem = function(locationIdx, panToMarker, scrollToResult) {
-          locator.selectedLocationIdx = locationIdx;
-          for (let locationElem of resultsContainerEl.children) {
-            locationElem.classList.remove('selected');
-            if (getResultIndex(locationElem) === locator.selectedLocationIdx) {
-              locationElem.classList.add('selected');
-              if (scrollToResult) {
-                panelEl.scrollTop = locationElem.offsetTop;
-              }
-            }
-          }
-          if (panToMarker && (locationIdx != null)) {
-            locator.map.panTo(locator.locations[locationIdx].coords);
-          }
-        };
-
-        // Create a marker for each location.
-        const markers = locator.locations.map(function(location, index) {
-          const marker = new google.maps.Marker({
-            position: location.coords,
-            map: locator.map,
-            title: location.title,
-          });
-          marker.addListener('click', function() {
-            selectResultItem(index, false, true);
-          });
-          return marker;
-        });
-
-        // Fit map to marker bounds.
-        locator.updateBounds = function() {
-          const bounds = new google.maps.LatLngBounds();
-          if (locator.searchLocationMarker) {
-            bounds.extend(locator.searchLocationMarker.getPosition());
-          }
-          for (let i = 0; i < markers.length; i++) {
-            bounds.extend(markers[i].getPosition());
-          }
-          locator.map.fitBounds(bounds);
-        };
-        if (locator.locations.length) {
-          locator.updateBounds();
-        }
-
-        // Get the distance of a store location to the user's location,
-        // used in sorting the list.
-        const getLocationDistance = function(location) {
-          if (!locator.searchLocation) return null;
-
-          // Use travel distance if available (from Distance Matrix).
-          if (location.travelDistanceValue != null) {
-            return location.travelDistanceValue;
-          }
-
-          // Fall back to straight-line distance.
-          return google.maps.geometry.spherical.computeDistanceBetween(
-              new google.maps.LatLng(location.coords),
-              locator.searchLocation.location);
-        };
-
-        // Render the results list --------------------------------------------------
-        const getResultIndex = function(elem) {
-          return parseInt(elem.getAttribute('data-location-index'));
-        };
-
-        locator.renderResultsList = function() {
-          let locations = locator.locations.slice();
-          for (let i = 0; i < locations.length; i++) {
-            locations[i].index = i;
-          }
-          if (locator.searchLocation) {
-            sectionNameEl.textContent =
-                'Nearest locations (' + locations.length + ')';
-            locations.sort(function(a, b) {
-              return getLocationDistance(a) - getLocationDistance(b);
-            });
-          } else {
-            sectionNameEl.textContent = `All locations (${locations.length})`;
-          }
-          const resultItemContext = {locations: locations};
-          resultsContainerEl.innerHTML = itemsTemplate(resultItemContext);
-          for (let item of resultsContainerEl.children) {
-            const resultIndex = getResultIndex(item);
-            if (resultIndex === locator.selectedLocationIdx) {
-              item.classList.add('selected');
-            }
-
-            const resultSelectionHandler = function() {
-              if (resultIndex !== locator.selectedLocationIdx) {
-                selectResultItem(resultIndex, true, false);
-              }
-            };
-
-            // Clicking anywhere on the item selects this location.
-            // Additionally, create a button element to make this behavior
-            // accessible under tab navigation.
-            item.addEventListener('click', resultSelectionHandler);
-            item.querySelector('.select-location')
-                .addEventListener('click', function(e) {
-                  resultSelectionHandler();
-                  e.stopPropagation();
-                });
-
-            // Clicking the directions button will open Google Maps directions in a
-            // new tab
-            const origin = (locator.searchLocation != null) ?
-                locator.searchLocation.location :
-                '';
-            const destination = locator.locations[resultIndex];
-            const googleMapsUrl = generateDirectionsURL(origin, destination);
-            item.querySelector('.directions-button')
-                .setAttribute('href', googleMapsUrl);
-          }
-        };
-
-        // Optional capability initialization --------------------------------------
-        initializeSearchInput(locator);
-        initializeDistanceMatrix(locator);
-
-        // Initial render of results -----------------------------------------------
-        locator.renderResultsList();
-      }
-
-      /** When the search input capability is enabled, initialize it. */
-      function initializeSearchInput(locator) {
-        const geocodeCache = new Map();
-        const geocoder = new google.maps.Geocoder();
-
-        const searchInputEl = document.getElementById('location-search-input');
-        const searchButtonEl = document.getElementById('location-search-button');
-
-        const updateSearchLocation = function(address, location) {
-          if (locator.searchLocationMarker) {
-            locator.searchLocationMarker.setMap(null);
-          }
-          if (!location) {
-            locator.searchLocation = null;
-            return;
-          }
-          locator.searchLocation = {'address': address, 'location': location};
-          locator.searchLocationMarker = new google.maps.Marker({
-            position: location,
-            map: locator.map,
-            title: 'My location',
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 12,
-              fillColor: '#3367D6',
-              fillOpacity: 0.5,
-              strokeOpacity: 0,
-            }
-          });
-
-          // Update the locator's idea of the user's country, used for units. Use
-          // `formatted_address` instead of the more structured `address_components`
-          // to avoid an additional billed call.
-          const addressParts = address.split(' ');
-          locator.userCountry = addressParts[addressParts.length - 1];
-
-          // Update map bounds to include the new location marker.
-          locator.updateBounds();
-
-          // Update the result list so we can sort it by proximity.
-          locator.renderResultsList();
-
-          locator.updateTravelTimes();
-        };
-
-        const geocodeSearch = function(query) {
-          if (!query) {
-            return;
-          }
-
-          const handleResult = function(geocodeResult) {
-            searchInputEl.value = geocodeResult.formatted_address;
-            updateSearchLocation(
-                geocodeResult.formatted_address, geocodeResult.geometry.location);
-          };
-
-          if (geocodeCache.has(query)) {
-            handleResult(geocodeCache.get(query));
-            return;
-          }
-          const request = {address: query, bounds: locator.map.getBounds()};
-          geocoder.geocode(request, function(results, status) {
-            if (status === 'OK') {
-              if (results.length > 0) {
-                const result = results[0];
-                geocodeCache.set(query, result);
-                handleResult(result);
-              }
-            }
-          });
-        };
-
-        // Set up geocoding on the search input.
-        searchButtonEl.addEventListener('click', function() {
-          geocodeSearch(searchInputEl.value.trim());
-        });
-
-        // Initialize Autocomplete.
-        initializeSearchInputAutocomplete(
-            locator, searchInputEl, geocodeSearch, updateSearchLocation);
-      }
-
-      /** Add Autocomplete to the search input. */
-      function initializeSearchInputAutocomplete(
-          locator, searchInputEl, fallbackSearch, searchLocationUpdater) {
-        // Set up Autocomplete on the search input. Bias results to map viewport.
-        const autocomplete = new google.maps.places.Autocomplete(searchInputEl, {
-          types: ['geocode'],
-          fields: ['place_id', 'formatted_address', 'geometry.location']
-        });
-        autocomplete.bindTo('bounds', locator.map);
-        autocomplete.addListener('place_changed', function() {
-          const placeResult = autocomplete.getPlace();
-          if (!placeResult.geometry) {
-            // Hitting 'Enter' without selecting a suggestion will result in a
-            // placeResult with only the text input value as the 'name' field.
-            fallbackSearch(placeResult.name);
-            return;
-          }
-          searchLocationUpdater(
-              placeResult.formatted_address, placeResult.geometry.location);
-        });
-      }
-
-      /** Initialize Distance Matrix for the locator. */
-      function initializeDistanceMatrix(locator) {
-        const distanceMatrixService = new google.maps.DistanceMatrixService();
-
-        // Annotate travel times to the selected location using Distance Matrix.
-        locator.updateTravelTimes = function() {
-          if (!locator.searchLocation) return;
-
-          const units = (locator.userCountry === 'USA') ?
-              google.maps.UnitSystem.IMPERIAL :
-              google.maps.UnitSystem.METRIC;
-          const request = {
-            origins: [locator.searchLocation.location],
-            destinations: locator.locations.map(function(x) {
-              return x.coords;
-            }),
-            travelMode: google.maps.TravelMode.DRIVING,
-            unitSystem: units,
-          };
-          const callback = function(response, status) {
-            if (status === 'OK') {
-              const distances = response.rows[0].elements;
-              for (let i = 0; i < distances.length; i++) {
-                const distResult = distances[i];
-                let travelDistanceText, travelDistanceValue;
-                if (distResult.status === 'OK') {
-                  travelDistanceText = distResult.distance.text;
-                  travelDistanceValue = distResult.distance.value;
-                }
-                const location = locator.locations[i];
-                location.travelDistanceText = travelDistanceText;
-                location.travelDistanceValue = travelDistanceValue;
-              }
-
-              // Re-render the results list, in case the ordering has changed.
-              locator.renderResultsList();
-            }
-          };
-          distanceMatrixService.getDistanceMatrix(request, callback);
-        };
-      }
-    </script>
-    <script>
-      const CONFIGURATION = {
-        "locations": [
-          {"title":"White by Nature - Bodrum","address1":"Çarşı Mahallesi Cumhuriyet Caddesi No:31","address2":"Bodrum, Muğla, Turkey","coords":{"lat":37.033184,"lng":27.430816},"placeId":"ChIJxaGZ_LBtvhQRzWEnqk6Q-Fw"},
-          {"title":"White by Nature","address1":"Müskebi Mah","address2":"Bodrum, Muğla, Turkey","coords":{"lat":37.0551229,"lng":27.3491955},"placeId":"ChIJ--UgsWtsvhQRNHj4vf7fino"},
-          {"title":"White by Nature","address1":"Mavişehir","address2":"Karşıyaka, İzmir, Turkey","coords":{"lat":38.4740052,"lng":27.0745983},"placeId":"ChIJaSKMkRzauxQRTaa9Ac3ag0Y"}
-        ],
-        "mapOptions": {"center":{"lat":38.0,"lng":-100.0},"fullscreenControl":true,"mapTypeControl":false,"streetViewControl":false,"zoom":4,"zoomControl":true,"maxZoom":17},
-        "mapsApiKey": "AIzaSyB1XgSuB9mGuUlr8ihQx4LIqbzQwxuHrzg",
-        "capabilities": {"input":true,"autocomplete":true,"directions":false,"distanceMatrix":true,"details":false,"actions":false}
-      };
-
-      function initMap() {
-        new LocatorPlus(CONFIGURATION);
-      }
-    </script>
-    <script id="locator-result-items-tmpl" type="text/x-handlebars-template">
-      {{#each locations}}
-        <li class="location-result" data-location-index="{{index}}">
-          <button class="select-location">
-            <h2 class="name">{{title}}</h2>
-          </button>
-          <div class="address">{{address1}}<br>{{address2}}</div>
-          {{#if travelDistanceText}}
-            <div class="distance">{{travelDistanceText}}</div>
-          {{/if}}
-          <a class="directions-button" href="" target="_blank" title="Get directions to this location on Google Maps">
-            <svg width="34" height="34" viewBox="0 0 34 34"
-                  fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17.5867 9.24375L17.9403 8.8902V8.8902L17.5867 9.24375ZM16.4117 9.24375L16.7653 9.59731L16.7675 9.59502L16.4117 9.24375ZM8.91172 16.7437L8.55817 16.3902L8.91172 16.7437ZM8.91172 17.9229L8.55817 18.2765L8.55826 18.2766L8.91172 17.9229ZM16.4117 25.4187H16.9117V25.2116L16.7652 25.0651L16.4117 25.4187ZM16.4117 25.4229H15.9117V25.63L16.0582 25.7765L16.4117 25.4229ZM25.0909 17.9229L25.4444 18.2765L25.4467 18.2742L25.0909 17.9229ZM25.4403 16.3902L17.9403 8.8902L17.2332 9.5973L24.7332 17.0973L25.4403 16.3902ZM17.9403 8.8902C17.4213 8.3712 16.5737 8.3679 16.0559 8.89248L16.7675 9.59502C16.8914 9.4696 17.1022 9.4663 17.2332 9.5973L17.9403 8.8902ZM16.0582 8.8902L8.55817 16.3902L9.26527 17.0973L16.7653 9.5973L16.0582 8.8902ZM8.55817 16.3902C8.0379 16.9105 8.0379 17.7562 8.55817 18.2765L9.26527 17.5694C9.13553 17.4396 9.13553 17.227 9.26527 17.0973L8.55817 16.3902ZM8.55826 18.2766L16.0583 25.7724L16.7652 25.0651L9.26517 17.5693L8.55826 18.2766ZM15.9117 25.4187V25.4229H16.9117V25.4187H15.9117ZM16.0582 25.7765C16.5784 26.2967 17.4242 26.2967 17.9444 25.7765L17.2373 25.0694C17.1076 25.1991 16.895 25.1991 16.7653 25.0694L16.0582 25.7765ZM17.9444 25.7765L25.4444 18.2765L24.7373 17.5694L17.2373 25.0694L17.9444 25.7765ZM25.4467 18.2742C25.9631 17.7512 25.9663 16.9096 25.438 16.3879L24.7354 17.0995C24.8655 17.2279 24.8687 17.4363 24.7351 17.5716L25.4467 18.2742Z" fill="#1967d2"/>
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M19 19.8333V17.75H15.6667V20.25H14V16.9167C14 16.4542 14.3708 16.0833 14.8333 16.0833H19V14L21.9167 16.9167L19 19.8333Z" fill="#1967d2"/>
-              <circle class="directions-button-background" cx="17" cy="17" r="16.5" stroke="#1967d2"/>
-            </svg>
-          </a>
-        </li>
-      {{/each}}
-    </script>
-  </head>
-  <body>
-    <div id="map-container">
-      <div id="locations-panel">
-        <div id="locations-panel-list">
-          <header>
-            <h1 class="search-title">
-              <img src="https://fonts.gstatic.com/s/i/googlematerialicons/place/v15/24px.svg"/>
-              Find a location near you
-            </h1>
-            <div class="search-input">
-              <input id="location-search-input" placeholder="Enter your address or zip code">
-              <div id="search-overlay-search" class="search-input-overlay search">
-                <button id="location-search-button">
-                  <img class="icon" src="https://fonts.gstatic.com/s/i/googlematerialicons/search/v11/24px.svg" alt="Search"/>
-                </button>
-              </div>
-            </div>
-          </header>
-          <div class="section-name" id="location-results-section-name">
-            All locations
-          </div>
-          <div class="results">
-            <ul id="location-results-list"></ul>
-          </div>
-        </div>
-      </div>
-      <div id="gmp-map"></div>
-    </div>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB1XgSuB9mGuUlr8ihQx4LIqbzQwxuHrzg&callback=initMap&libraries=places,geometry&solution_channel=GMP_QB_locatorplus_v6_cABD" async defer></script>
-  </body>
-</html>
+<head>
+<script>
+        (()=>{var En=Object.create;var le=Object.defineProperty;var On=Object.getOwnPropertyDescriptor;var Tn=Object.getOwnPropertyNames;var Rn=Object.getPrototypeOf,Pn=Object.prototype.hasOwnProperty;var In=(e,t,r)=>t in e?le(e,t,{enumerable:!0,configurable:!0,writable:!0,value:r}):e[t]=r;var d=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var jn=(e,t,r,n)=>{if(t&&typeof t=="object"||typeof t=="function")for(let i of Tn(t))!Pn.call(e,i)&&i!==r&&le(e,i,{get:()=>t[i],enumerable:!(n=On(t,i))||n.enumerable});return e};var m=(e,t,r)=>(r=e!=null?En(Rn(e)):{},jn(t||!e||!e.__esModule?le(r,"default",{value:e,enumerable:!0}):r,e));var x=(e,t,r)=>(In(e,typeof t!="symbol"?t+"":t,r),r);var Xe=d((pe,Je)=>{(function(e,t){"use strict";typeof define=="function"&&define.amd?define("stackframe",[],t):typeof pe=="object"?Je.exports=t():e.StackFrame=t()})(pe,function(){"use strict";function e(u){return!isNaN(parseFloat(u))&&isFinite(u)}function t(u){return u.charAt(0).toUpperCase()+u.substring(1)}function r(u){return function(){return this[u]}}var n=["isConstructor","isEval","isNative","isToplevel"],i=["columnNumber","lineNumber"],o=["fileName","functionName","source"],s=["args"],y=["evalOrigin"],l=n.concat(i,o,s,y);function p(u){if(!!u)for(var g=0;g<l.length;g++)u[l[g]]!==void 0&&this["set"+t(l[g])](u[l[g]])}p.prototype={getArgs:function(){return this.args},setArgs:function(u){if(Object.prototype.toString.call(u)!=="[object Array]")throw new TypeError("Args must be an Array");this.args=u},getEvalOrigin:function(){return this.evalOrigin},setEvalOrigin:function(u){if(u instanceof p)this.evalOrigin=u;else if(u instanceof Object)this.evalOrigin=new p(u);else throw new TypeError("Eval Origin must be an Object or StackFrame")},toString:function(){var u=this.getFileName()||"",g=this.getLineNumber()||"",v=this.getColumnNumber()||"",E=this.getFunctionName()||"";return this.getIsEval()?u?"[eval] ("+u+":"+g+":"+v+")":"[eval]:"+g+":"+v:E?E+" ("+u+":"+g+":"+v+")":u+":"+g+":"+v}},p.fromString=function(g){var v=g.indexOf("("),E=g.lastIndexOf(")"),H=g.substring(0,v),bn=g.substring(v+1,E).split(","),Ve=g.substring(E+1);if(Ve.indexOf("@")===0)var ce=/@(.+?)(?::(\d+))?(?::(\d+))?$/.exec(Ve,""),wn=ce[1],Sn=ce[2],xn=ce[3];return new p({functionName:H,args:bn||void 0,fileName:wn,lineNumber:Sn||void 0,columnNumber:xn||void 0})};for(var a=0;a<n.length;a++)p.prototype["get"+t(n[a])]=r(n[a]),p.prototype["set"+t(n[a])]=function(u){return function(g){this[u]=Boolean(g)}}(n[a]);for(var c=0;c<i.length;c++)p.prototype["get"+t(i[c])]=r(i[c]),p.prototype["set"+t(i[c])]=function(u){return function(g){if(!e(g))throw new TypeError(u+" must be a Number");this[u]=Number(g)}}(i[c]);for(var f=0;f<o.length;f++)p.prototype["get"+t(o[f])]=r(o[f]),p.prototype["set"+t(o[f])]=function(u){return function(g){this[u]=String(g)}}(o[f]);return p})});var Ye=d((fe,ze)=>{(function(e,t){"use strict";typeof define=="function"&&define.amd?define("error-stack-parser",["stackframe"],t):typeof fe=="object"?ze.exports=t(Xe()):e.ErrorStackParser=t(e.StackFrame)})(fe,function(t){"use strict";var r=/(^|@)\S+:\d+/,n=/^\s*at .*(\S+:\d+|\(native\))/m,i=/^(eval@)?(\[native code])?$/;return{parse:function(s){if(typeof s.stacktrace<"u"||typeof s["opera#sourceloc"]<"u")return this.parseOpera(s);if(s.stack&&s.stack.match(n))return this.parseV8OrIE(s);if(s.stack)return this.parseFFOrSafari(s);throw new Error("Cannot parse given Error object")},extractLocation:function(s){if(s.indexOf(":")===-1)return[s];var y=/(.+?)(?::(\d+))?(?::(\d+))?$/,l=y.exec(s.replace(/[()]/g,""));return[l[1],l[2]||void 0,l[3]||void 0]},parseV8OrIE:function(s){var y=s.stack.split(`
+`).filter(function(l){return!!l.match(n)},this);return y.map(function(l){l.indexOf("(eval ")>-1&&(l=l.replace(/eval code/g,"eval").replace(/(\(eval at [^()]*)|(,.*$)/g,""));var p=l.replace(/^\s+/,"").replace(/\(eval code/g,"(").replace(/^.*?\s+/,""),a=p.match(/ (\(.+\)$)/);p=a?p.replace(a[0],""):p;var c=this.extractLocation(a?a[1]:p),f=a&&p||void 0,u=["eval","<anonymous>"].indexOf(c[0])>-1?void 0:c[0];return new t({functionName:f,fileName:u,lineNumber:c[1],columnNumber:c[2],source:l})},this)},parseFFOrSafari:function(s){var y=s.stack.split(`
+`).filter(function(l){return!l.match(i)},this);return y.map(function(l){if(l.indexOf(" > eval")>-1&&(l=l.replace(/ line (\d+)(?: > eval line \d+)* > eval:\d+:\d+/g,":$1")),l.indexOf("@")===-1&&l.indexOf(":")===-1)return new t({functionName:l});var p=/((.*".+"[^@]*)?[^@]*)(?:@)/,a=l.match(p),c=a&&a[1]?a[1]:void 0,f=this.extractLocation(l.replace(p,""));return new t({functionName:c,fileName:f[0],lineNumber:f[1],columnNumber:f[2],source:l})},this)},parseOpera:function(s){return!s.stacktrace||s.message.indexOf(`
+`)>-1&&s.message.split(`
+`).length>s.stacktrace.split(`
+`).length?this.parseOpera9(s):s.stack?this.parseOpera11(s):this.parseOpera10(s)},parseOpera9:function(s){for(var y=/Line (\d+).*script (?:in )?(\S+)/i,l=s.message.split(`
+`),p=[],a=2,c=l.length;a<c;a+=2){var f=y.exec(l[a]);f&&p.push(new t({fileName:f[2],lineNumber:f[1],source:l[a]}))}return p},parseOpera10:function(s){for(var y=/Line (\d+).*script (?:in )?(\S+)(?:: In function (\S+))?$/i,l=s.stacktrace.split(`
+`),p=[],a=0,c=l.length;a<c;a+=2){var f=y.exec(l[a]);f&&p.push(new t({functionName:f[3]||void 0,fileName:f[2],lineNumber:f[1],source:l[a]}))}return p},parseOpera11:function(s){var y=s.stack.split(`
+`).filter(function(l){return!!l.match(r)&&!l.match(/^Error created at/)},this);return y.map(function(l){var p=l.split("@"),a=this.extractLocation(p.pop()),c=p.shift()||"",f=c.replace(/<anonymous function(: (\w+))?>/,"$2").replace(/\([^)]*\)/g,"")||void 0,u;c.match(/\(([^)]*)\)/)&&(u=c.replace(/^[^(]+\(([^)]*)\)$/,"$1"));var g=u===void 0||u==="[arguments not available]"?void 0:u.split(",");return new t({functionName:f,args:g,fileName:a[0],lineNumber:a[1],columnNumber:a[2],source:l})},this)}}})});var de=d((Ys,Qe)=>{var Nn=typeof global=="object"&&global&&global.Object===Object&&global;Qe.exports=Nn});var P=d((Qs,Ze)=>{var kn=de(),An=typeof self=="object"&&self&&self.Object===Object&&self,Cn=kn||An||Function("return this")();Ze.exports=Cn});var ge=d((Zs,et)=>{var Mn=P(),qn=Mn.Symbol;et.exports=qn});var it=d((ea,nt)=>{var tt=ge(),rt=Object.prototype,Ln=rt.hasOwnProperty,Wn=rt.toString,$=tt?tt.toStringTag:void 0;function Hn(e){var t=Ln.call(e,$),r=e[$];try{e[$]=void 0;var n=!0}catch{}var i=Wn.call(e);return n&&(t?e[$]=r:delete e[$]),i}nt.exports=Hn});var st=d((ta,ot)=>{var $n=Object.prototype,Dn=$n.toString;function Fn(e){return Dn.call(e)}ot.exports=Fn});var O=d((ra,lt)=>{var at=ge(),Un=it(),Bn=st(),Vn="[object Null]",Gn="[object Undefined]",ct=at?at.toStringTag:void 0;function Kn(e){return e==null?e===void 0?Gn:Vn:ct&&ct in Object(e)?Un(e):Bn(e)}lt.exports=Kn});var S=d((na,ut)=>{function Jn(e){return e!=null&&typeof e=="object"}ut.exports=Jn});var ft=d((ia,pt)=>{var Xn=O(),zn=S(),Yn="[object Number]";function Qn(e){return typeof e=="number"||zn(e)&&Xn(e)==Yn}pt.exports=Qn});var gt=d((oa,dt)=>{var Zn=ft();function ei(e){return Zn(e)&&e!=+e}dt.exports=ei});var ht=d((sa,yt)=>{var ti=O(),ri=S(),ni="[object Date]";function ii(e){return ri(e)&&ti(e)==ni}yt.exports=ii});var D=d((aa,mt)=>{function oi(e){return function(t){return e(t)}}mt.exports=oi});var B=d((F,N)=>{var si=de(),vt=typeof F=="object"&&F&&!F.nodeType&&F,U=vt&&typeof N=="object"&&N&&!N.nodeType&&N,ai=U&&U.exports===vt,ye=ai&&si.process,ci=function(){try{var e=U&&U.require&&U.require("util").types;return e||ye&&ye.binding&&ye.binding("util")}catch{}}();N.exports=ci});var he=d((ca,wt)=>{var li=ht(),ui=D(),_t=B(),bt=_t&&_t.isDate,pi=bt?ui(bt):li;wt.exports=pi});var xt=d((la,St)=>{var fi=O(),di=S(),gi="[object RegExp]";function yi(e){return di(e)&&fi(e)==gi}St.exports=yi});var me=d((ua,Tt)=>{var hi=xt(),mi=D(),Et=B(),Ot=Et&&Et.isRegExp,vi=Ot?mi(Ot):hi;Tt.exports=vi});var ve=d((pa,Rt)=>{function _i(e){var t=typeof e;return e!=null&&(t=="object"||t=="function")}Rt.exports=_i});var It=d((fa,Pt)=>{var bi=O(),wi=ve(),Si="[object AsyncFunction]",xi="[object Function]",Ei="[object GeneratorFunction]",Oi="[object Proxy]";function Ti(e){if(!wi(e))return!1;var t=bi(e);return t==xi||t==Ei||t==Si||t==Oi}Pt.exports=Ti});var Nt=d((da,jt)=>{var Ri=P(),Pi=Ri["__core-js_shared__"];jt.exports=Pi});var Ct=d((ga,At)=>{var _e=Nt(),kt=function(){var e=/[^.]+$/.exec(_e&&_e.keys&&_e.keys.IE_PROTO||"");return e?"Symbol(src)_1."+e:""}();function Ii(e){return!!kt&&kt in e}At.exports=Ii});var be=d((ya,Mt)=>{var ji=Function.prototype,Ni=ji.toString;function ki(e){if(e!=null){try{return Ni.call(e)}catch{}try{return e+""}catch{}}return""}Mt.exports=ki});var Lt=d((ha,qt)=>{var Ai=It(),Ci=Ct(),Mi=ve(),qi=be(),Li=/[\\^$.*+?()[\]{}|]/g,Wi=/^\[object .+?Constructor\]$/,Hi=Function.prototype,$i=Object.prototype,Di=Hi.toString,Fi=$i.hasOwnProperty,Ui=RegExp("^"+Di.call(Fi).replace(Li,"\\$&").replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g,"$1.*?")+"$");function Bi(e){if(!Mi(e)||Ci(e))return!1;var t=Ai(e)?Ui:Wi;return t.test(qi(e))}qt.exports=Bi});var Ht=d((ma,Wt)=>{function Vi(e,t){return e?.[t]}Wt.exports=Vi});var k=d((va,$t)=>{var Gi=Lt(),Ki=Ht();function Ji(e,t){var r=Ki(e,t);return Gi(r)?r:void 0}$t.exports=Ji});var Ft=d((_a,Dt)=>{var Xi=k(),zi=P(),Yi=Xi(zi,"DataView");Dt.exports=Yi});var Bt=d((ba,Ut)=>{var Qi=k(),Zi=P(),eo=Qi(Zi,"Map");Ut.exports=eo});var Gt=d((wa,Vt)=>{var to=k(),ro=P(),no=to(ro,"Promise");Vt.exports=no});var Jt=d((Sa,Kt)=>{var io=k(),oo=P(),so=io(oo,"Set");Kt.exports=so});var zt=d((xa,Xt)=>{var ao=k(),co=P(),lo=ao(co,"WeakMap");Xt.exports=lo});var ee=d((Ea,nr)=>{var we=Ft(),Se=Bt(),xe=Gt(),Ee=Jt(),Oe=zt(),rr=O(),A=be(),Yt="[object Map]",uo="[object Object]",Qt="[object Promise]",Zt="[object Set]",er="[object WeakMap]",tr="[object DataView]",po=A(we),fo=A(Se),go=A(xe),yo=A(Ee),ho=A(Oe),I=rr;(we&&I(new we(new ArrayBuffer(1)))!=tr||Se&&I(new Se)!=Yt||xe&&I(xe.resolve())!=Qt||Ee&&I(new Ee)!=Zt||Oe&&I(new Oe)!=er)&&(I=function(e){var t=rr(e),r=t==uo?e.constructor:void 0,n=r?A(r):"";if(n)switch(n){case po:return tr;case fo:return Yt;case go:return Qt;case yo:return Zt;case ho:return er}return t});nr.exports=I});var or=d((Oa,ir)=>{var mo=ee(),vo=S(),_o="[object Map]";function bo(e){return vo(e)&&mo(e)==_o}ir.exports=bo});var lr=d((Ta,cr)=>{var wo=or(),So=D(),sr=B(),ar=sr&&sr.isMap,xo=ar?So(ar):wo;cr.exports=xo});var pr=d((Ra,ur)=>{var Eo=ee(),Oo=S(),To="[object Set]";function Ro(e){return Oo(e)&&Eo(e)==To}ur.exports=Ro});var yr=d((Pa,gr)=>{var Po=pr(),Io=D(),fr=B(),dr=fr&&fr.isSet,jo=dr?Io(dr):Po;gr.exports=jo});var mr=d((Ia,hr)=>{var No=ee(),ko=S(),Ao="[object WeakMap]";function Co(e){return ko(e)&&No(e)==Ao}hr.exports=Co});var _r=d((ja,vr)=>{var Mo=O(),qo=S(),Lo="[object WeakSet]";function Wo(e){return qo(e)&&Mo(e)==Lo}vr.exports=Wo});var wr=d((Na,br)=>{function Ho(e,t){return function(r){return e(t(r))}}br.exports=Ho});var xr=d((ka,Sr)=>{var $o=wr(),Do=$o(Object.getPrototypeOf,Object);Sr.exports=Do});var Te=d((Aa,Or)=>{var Fo=O(),Uo=xr(),Bo=S(),Vo="[object Object]",Go=Function.prototype,Ko=Object.prototype,Er=Go.toString,Jo=Ko.hasOwnProperty,Xo=Er.call(Object);function zo(e){if(!Bo(e)||Fo(e)!=Vo)return!1;var t=Uo(e);if(t===null)return!0;var r=Jo.call(t,"constructor")&&t.constructor;return typeof r=="function"&&r instanceof r&&Er.call(r)==Xo}Or.exports=zo});var Rr=d((Ca,Tr)=>{var Yo=S(),Qo=Te();function Zo(e){return Yo(e)&&e.nodeType===1&&!Qo(e)}Tr.exports=Zo});var Ir=d((Ma,Pr)=>{var es=O(),ts=S(),rs=Te(),ns="[object DOMException]",is="[object Error]";function os(e){if(!ts(e))return!1;var t=es(e);return t==is||t==ns||typeof e.message=="string"&&typeof e.name=="string"&&!rs(e)}Pr.exports=os});var zr=d(qe=>{"use strict";Object.defineProperty(qe,"__esModule",{value:!0});var X=[];X[0]=function(){return function(){}};X[1]=function(e,t){return typeof t>"u"?e:function(n){e(n,t)}};function bs(e){return X[e]||(X[e]=ws(e)),X[e]}function ws(e){for(var t="return function dispatcher"+e+`(payload) {
+`,r=[],n=[],i=0;i<e;i++)r.push("cb"+i),n.push("ctx"+i),t+="    cb"+i+"(payload, ctx"+i+`);
+`;return t+="};",new(Function.bind.apply(Function,[void 0].concat(r.concat(n),[t])))}var Ss=function(){function e(){this.hasHandlers=!1,this._handlers=[],this._contexts=[],this._createDispatcher()}return e.prototype.addHandler=function(t,r){return this.isHandlerAttached(t,r)||(this._handlers.push(t),this._contexts.push(r),this._createDispatcher(),this._updateHasHandlers()),this},e.prototype.removeHandler=function(t,r){var n=this._getHandlerIndex(t,r);return typeof n<"u"&&(this._handlers.splice(n,1),this._contexts.splice(n,1),this._createDispatcher(),this._updateHasHandlers()),this},e.prototype.isHandlerAttached=function(t,r){return typeof this._getHandlerIndex(t,r)<"u"},e.prototype._updateHasHandlers=function(){this.hasHandlers=!!this._handlers.length},e.prototype._getHandlerIndex=function(t,r){var n=this._handlers.length,i;for(i=0;i<n&&!(this._handlers[i]===t&&this._contexts[i]===r);i++);return i<n?i:void 0},e.prototype._createDispatcher=function(){this.dispatch=bs(this._handlers.length).apply(this,this._handlers.concat(this._contexts))},e}();qe.default=Ss});var Yr=d(Le=>{"use strict";Object.defineProperty(Le,"__esModule",{value:!0});var xs=zr();Le.Event=xs.default});var tn=d(He=>{"use strict";Object.defineProperty(He,"__esModule",{value:!0});var Es=Yr(),Qr="resolve_transaction",Zr="reject_transaction",en="error",We=function(){function e(t,r){r===void 0&&(r=0),this._dispatch=t,this._rpcTimeout=r,this.error=new Es.Event,this._rpcHandlers={},this._signalHandlers={},this._pendingTransactions={},this._nextTransactionId=0}return e.prototype.dispatch=function(t,r){var n=t;switch(n.__type){case e.MessageType.signal:return this._handleSignal(n,r);case e.MessageType.rpc:return this._handeRpc(n,r);case e.MessageType.internal:return this._handleInternal(n);default:this._raiseError("invalid message type "+n.__type)}},e.prototype.rpc=function(t,r,n,i){var o=this;i===void 0&&(i={});var s=this._nextTransactionId++;return this._dispatch({__rpc:!0,__type:e.MessageType.rpc,__transactionId:s,__id:t,__payload:r},n||void 0),new Promise(function(y,l){var p=o._pendingTransactions[s]={id:s,resolve:y,reject:l},a=i.timeout||o._rpcTimeout;a>0&&(o._pendingTransactions[s].timeoutHandle=setTimeout(function(){return o._transactionTimeout(p)},a))})},e.prototype.signal=function(t,r,n){return this._dispatch({__rpc:!0,__type:e.MessageType.signal,__id:t,__payload:r},n||void 0),this},e.prototype.registerRpcHandler=function(t,r){if(this._rpcHandlers[t])throw new Error("rpc handler for "+t+" already registered");return this._rpcHandlers[t]=r,this},e.prototype.registerSignalHandler=function(t,r){return this._signalHandlers[t]||(this._signalHandlers[t]=[]),this._signalHandlers[t].push(r),this},e.prototype.deregisterRpcHandler=function(t,r){return this._rpcHandlers[t]&&delete this._rpcHandlers[t],this},e.prototype.deregisterSignalHandler=function(t,r){return this._signalHandlers[t]&&(this._signalHandlers[t]=this._signalHandlers[t].filter(function(n){return r!==n})),this},e.prototype._raiseError=function(t){this.error.dispatch(new Error(t)),this._dispatch({__rpc:!0,__type:e.MessageType.internal,__id:en,__payload:t})},e.prototype._handleSignal=function(t,r){if(!this._signalHandlers[t.__id])return this._raiseError("invalid signal "+t.__id);this._signalHandlers[t.__id].forEach(function(n){return n(t.__payload,r)})},e.prototype._handeRpc=function(t,r){var n=this;if(!this._rpcHandlers[t.__id])return this._raiseError("invalid rpc "+t.__id);Promise.resolve(this._rpcHandlers[t.__id](t.__payload,r)).then(function(i){return n._dispatch({__rpc:!0,__type:e.MessageType.internal,__id:Qr,__transactionId:t.__transactionId,__payload:i})},function(i){return n._dispatch({__rpc:!0,__type:e.MessageType.internal,__id:Zr,__transactionId:t.__transactionId,__payload:i})})},e.prototype._handleInternal=function(t){var r=typeof t.__transactionId<"u"?this._pendingTransactions[t.__transactionId]:void 0;switch(t.__id){case Qr:if(!r||typeof t.__transactionId>"u")return this._raiseError("no pending transaction with id "+t.__transactionId);r.resolve(t.__payload),this._clearTransaction(this._pendingTransactions[t.__transactionId]);break;case Zr:if(!r||typeof t.__transactionId>"u")return this._raiseError("no pending transaction with id "+t.__transactionId);this._pendingTransactions[t.__transactionId].reject(t.__payload),this._clearTransaction(this._pendingTransactions[t.__transactionId]);break;case en:this.error.dispatch(new Error("remote error: "+t.__payload));break;default:this._raiseError("unhandled internal message "+t.__id);break}},e.prototype._transactionTimeout=function(t){t.reject("transaction timed out"),this._raiseError("transaction "+t.id+" timed out"),delete this._pendingTransactions[t.id]},e.prototype._clearTransaction=function(t){typeof t.timeoutHandle<"u"&&clearTimeout(t.timeoutHandle),delete this._pendingTransactions[t.id]},e}();(function(e){var t;(function(r){r[r.signal=0]="signal",r[r.rpc=1]="rpc",r[r.internal=2]="internal"})(t=e.MessageType||(e.MessageType={}))})(We||(We={}));He.default=We});var z=d($e=>{"use strict";Object.defineProperty($e,"__esModule",{value:!0});var Os=tn();$e.RpcProvider=Os.default});var Ge="/playcode-preview-sw.js";function Ke(){try{return window.self!==window.top}catch{return!0}}var ue=Ke(),Z=!Ke();var Br=m(Ye());var je=m(gt()),Ne=m(he()),ke=m(me()),Ae=m(lr()),Ce=m(yr()),gs=m(mr()),ys=m(_r()),Nr=m(Rr()),kr=m(Ir()),Ar=m(he()),Cr=m(me());function Mr(e){return Object.prototype.toString.call(e)==="[object Number]"}function V(e){return typeof e=="bigint"}function C(e){return typeof e=="string"}function w(e){return Object.prototype.toString.call(e)==="[object Array]"}function qr(e){return typeof e=="boolean"}function re(e){return e===void 0}function ne(e){return e===null}function M(e){return typeof e=="symbol"}function T(e){return Object.prototype.toString.call(e)==="[object Object]"||!Mr(e)&&!V(e)&&!C(e)&&!qr(e)&&!w(e)&&!ne(e)&&!G(e)&&!(0,Ar.default)(e)&&!(0,Cr.default)(e)&&!re(e)&&!M(e)}function ss(e){let t=Object.prototype.toString.call(e);return t==="[object Window]"||t==="[object DOMWindow]"||t==="[object global]"}function G(e){return typeof e=="function"}function Lr(e){try{return(0,Nr.default)(e)}catch{return!1}}function Wr(e){try{return(0,kr.default)(e)}catch{return!1}}var Hr=e=>{let t=Object.values(e.attributes).map(r=>`${r.name}="${r.value}"`).join(" ");return`<${e.tagName.toLowerCase()} ${t}></${e.tagName.toLowerCase()}>`};function $r(e){return Object.prototype.toString.call(e).replace(/\[object (.*)\]/,"$1")}function Dr(e){let t=Object.prototype.hasOwnProperty;try{if(!e||typeof e!="object"||ss(e)||e.nodeType||e.constructor&&!t.call(e,"constructor")&&!t.call(e.constructor.prototype,"isPrototypeOf"))return!1}catch{return!1}let r;for(r in e);return r===void 0||t.call(e,r)}var as=/[\n\t]/g,cs=e=>({"\n":"\\n","	":"\\t"})[e];function Pe(e){return typeof e!="string"?e:String(e).replace(as,cs)}var ls=()=>{let e=new WeakSet;return t=>{if(typeof t=="object"&&t!==null){if(e.has(t))return!0;e.add(t)}return!1}},jr=(e,t=0)=>{let r="";return C(e)?(t>0&&(e=fs(e,t)),r+='"'+Pe(e)+'"'):M(e)?r+=String(e).replace(/^Symbol\((.*)\)$/i,'Symbol("$1")'):G(e)?r+=(e.name||"function")+"()":V(e)?r+=String(e)+"n":r+=String(e),r},Re=(e,t,r=0)=>{if(!T(e)&&!w(e)){t.ret+=jr(e,t.keyMaxLen);return}if(t.circularFinder(e)){w(e)?t.ret+="(Circular Array)":T&&(t.ret+=`(Circular ${e.constructor?.name||"Object"})`);return}let i="",o="";if(t.pretty){for(let p=0;p<=r;p++)i+="  ";o=`
+`}let s="{",y="}";w(e)&&(s="[",y="]"),t.ret+=s+o;let l=ds(e);for(let p=0;p<l.length;p++){let a=l[p];t.ret+=i;try{if(!w(e)){if(w(a))t.ret+=`(${a.length})`;else if(T(a)||M(a)){let c=te(a);t.ret+=c==="Object"?"":c}else t.ret+=a;t.ret+=": "}}catch{continue}try{let c=e[a];if(w(c))t.maxDepth>-1&&r>=t.maxDepth?t.ret+="Array("+c.length+")":Re(c,t,r+1);else if(T(c))if(t.maxDepth>-1&&r>=t.maxDepth){let f=te(c);t.ret+=(f==="Object"?"":f+" ")+"{...}"}else Re(c,t,r+1);else t.ret+=jr(c,t.keyMaxLen)}catch{t.ret+="(...)"}if(t.keyMaxLen>0&&t.ret.length>=t.keyMaxLen*10){t.ret+=", (...)";break}p<l.length-1&&(t.ret+=", "),t.ret+=o}t.ret+=i.substring(0,i.length-2)+y};function Fr(e,t={maxDepth:-1,keyMaxLen:-1,pretty:!1}){let r=Object.assign({ret:"",maxDepth:-1,keyMaxLen:-1,pretty:!1,circularFinder:ls()},t);return Re(e,r),r.ret}function Ie(e,t,r){let n;try{n=JSON.stringify(e,t,r)}catch{n=$r(e)}return n}function us(e){try{return encodeURI(e).split(/%(?:u[0-9A-F]{2})?[0-9A-F]{2}|./).length-1}catch{return 0}}function ps(e){return e<=0?"":e>=1e3*1e3?(e/1e3/1e3).toFixed(1)+" MB":e>=1e3*1?(e/1e3).toFixed(1)+" KB":e+" B"}function fs(e,t){return e.length>t&&(e=e.substring(0,t)+`...(${ps(us(e))})`),e}function ds(e){return!T(e)&&!w(e)?[]:Object.keys(e)}function te(e){try{if(e?.constructor.name)return e.constructor.name}catch{}return $r(e)}var K=e=>{let t=Fr(e,{maxDepth:0}),r=t.substring(0,36),n;if(w(e))n=e.length>1?`(${e.length}) `:"";else if(Dr(e)){let i=Object.keys(e).length;n=i>1?`(${i}) `:""}else n=te(e)+" ";return t.length>36&&(w(e)?r+="...]":r+="...}"),n=Pe(n+r),n};var J=1;window.lastLogId=1;window.lastArgId=1;var ms=()=>window.lastLogId++,q=()=>window.lastArgId++;window.logAttrs=new Map;window.timers=new Map;function Vr(e,t,r=!1,n=console){let i={};return e.forEach(o=>{!n[o]||(i[o]=n[o],n[o]=function(){t(o,Array.from(arguments)),r||i[o].apply(n,arguments)})}),i}function Me(e,t){let r={id:ms().toString(),type:e,args:null,createdAt:Date.now()};if(e==="table"){let n=vs(...t);n&&(r.args=[{id:q().toString(),type:"table",value:n}])}else if(e==="time"){let n=t?.[0]||"default",i=C(n)?n:Ie(n);return window.timers.set(i,performance.now()),!1}else if(e==="timeEnd"){let n=t?.[0]||"default",i=C(n)?n:Ie(n);if(window.timers.has(i)){let o=window.timers.get(i),s=performance.now()-o;r.args=[{id:q().toString(),type:"string",value:`${i}: `+s+"ms"}],window.timers.delete(i)}else r.args=[{id:q().toString(),type:"string",value:`Timer '${i}' does not exist`}]}else e==="clear"&&(r.args=[{id:q().toString(),type:"string",value:"Console was cleared"}]);return r.args||(r.args=t.map(n=>j(n,null,1,null,null))),r}function j(e,t=null,r=0,n=null,i=null){n||(n=i?[...i,q()]:[q()]);let o={id:n.toString(),type:"unknown",key:t,value:null,isExpandable:!1,preview:"",size:0};return window.logAttrs.has(o.id)||window.logAttrs.set(o.id,e),ne(e)?(o.type="null",o.value="null"):re(e)?(o.type="undefined",o.value="undefined"):je.default(e)?(o.type="nan",o.value="nan"):ke.default(e)?(o.type="regexp",o.value=e.toString()):G(e)?(o.type="function",o.value=null,o.preview=`\u0192 ${e.name}()`):M(e)?(o.type="symbol",o.value=e.toString()):V(e)?(o.type="bigint",o.value=e.toString()+"n"):Ne.default(e)?(o.type="date",o.value=e.toString()):w(e)?(o.type="array",o.isExpandable=!0,o.preview=K(e),o.size=e.length,r<J?o.value=e.map((s,y)=>j(s,y,r+1,null,n)):o.value=null):Ae.default(e)?(o.type="map",o.isExpandable=!0,o.preview=K(e),o.size=e.size,r<J?o.value=[...e.keys()].map(s=>j(e.get(s),s,r+1,null,n)):o.value=null):Ce.default(e)?(o.type="set",o.isExpandable=!0,o.preview=K(e),o.size=e.size,r<J?o.value=[...e.values()].map((s,y)=>j(s,y,r+1,null,n)):o.value=null):Lr(e)?(o.type="htmlElement",o.preview=Hr(e)):Wr(e)?(o.type="error",o.isExpandable=!0,o.preview=_s(e),r<J?o.value=Object.keys(e).map(s=>j(e[s],s,r+1,null,n)):o.value=null):T(e)?(o.type="object",o.isExpandable=!0,o.preview=K(e),o.size=Object.keys(e).length,r<J?o.value=Object.keys(e).map(s=>j(e[s],s,r+1,null,n)):o.value=null):(o.type=typeof e,o.value=e),o}function Gr(e){let t=window.logAttrs.get(e);return t?j(t,0,0,e.split(",")):null}var vs=(e,t)=>{try{let r=[],n=[];if(T(e)){if(t)if(typeof t!="object"){t=[];for(let i in e)for(let o in e[i])t.indexOf(o)===-1&&t.push(o)}else{r.push("(index)");for(let i of t)r.push(i)}else{t=[];for(let i in e[0])t.indexOf(i)===-1&&t.push(i);r.push("(index)");for(let i of t)r.push(i)}for(let i in e){let o=e[i],s=[i];for(let y=0;y<t.length;y++)s.push(o[t[y]]);n.push(s)}}else if(Array.isArray(e)){if(t)if(typeof t!="object"){t=[];for(let i in e)for(let o in e[i])t.indexOf(o)===-1&&t.push(o)}else{r.push("(index)");for(let i of t)r.push(i)}else{t=[];for(let i in e[0])t.indexOf(i)===-1&&t.push(i);r.push("(index)");for(let i of t)r.push(i)}for(let i=0;i<e.length;i++){let o=e[i],s=[i];for(let y=0;y<t.length;y++)s.push(o[t[y]]);n.push(s)}}return{header:r,rows:n}}catch{return null}};function _s(e){let t=[];try{t=Br.default.parse(e)}catch{}let r=t.findIndex(i=>i.functionName?.includes("playcodeUpdateWindow"));r&&(t=t.slice(0,r));let n="";for(let i of t)i.fileName=i.fileName?.replace(window.location.origin,""),!i.fileName?.startsWith("webpack-internal:///")&&(n+=i.source+`
+`);return e.toString()+`
+`+n}function Kr(e){return new Proxy(e,{get(t,r,n){let i=Symbol.for("__"+r+"__");if(!!i)return t[i]},set(t,r,n){let i=Symbol.for("__"+r+"__");return t[i]=n}})}var h=Kr(document),b=Kr(window);function Jr(e,t){b["originalObjectKeys-"+e]=new Set(Object.keys(t))}function Xr(e,t){let r=Object.keys(t),n=b["originalObjectKeys-"+e];if(!n)return;let i=r.filter(o=>!n.has(o));if(i.length)for(let o of i)t[o]=null,delete t[o]}var nn=m(z());var De=function(e,t,r=null){let n=new Promise((i,o)=>{let s=setTimeout(()=>{clearTimeout(s),o(r||"Timed out in "+e+"ms.")},e)});return Promise.race([t,n])};var Ts=console,Rs=15*1e3,rn=5*1e3,R=class{constructor(t=Rs){this.requestTimeout=t;x(this,"rpcProvider");x(this,"isClosed");x(this,"closers");x(this,"rpc");x(this,"signal");this.isClosed=!1,this.closers=new Set;let r=this;this.rpc=new Proxy({},{get:(n,i,o)=>async function(){return await r.rpcRaw(i,...arguments)}}),this.signal=new Proxy({},{get:(n,i,o)=>function(){return r.signalRaw(i,...arguments)}}),this.init()}init(){throw new Error("Not implemented")}registerRpcHandler(t,r){this.closers.add(async()=>{this.rpcProvider.deregisterRpcHandler(t,r)}),this.rpcProvider.registerRpcHandler(t,r)}registerSignalHandler(t,r){this.closers.add(async()=>{this.rpcProvider.deregisterSignalHandler(t,r)}),this.rpcProvider.registerSignalHandler(t,r)}async rpcRaw(t,r,n){return this.rpcProvider.rpc(t,r,n||void 0)}signalRaw(t,r,n){return this.rpcProvider.signal(t,r,n||void 0),this}async close(t){this.isClosed=!0;let r=[];t&&r.push(De(rn,this.rpcProvider.signal("close")));for(let n of this.closers)r.push(De(rn,n()));this.closers=new Set;try{await Promise.all(r)}catch(n){Ts.warn("BaseRpc: close error:",n)}}};var ie=class extends R{constructor(){super(3e4);x(this,"port")}init(){this.rpcProvider=new nn.RpcProvider((t,r)=>{if(!this.port){console.log("RpcApp:postMessage:port is not ready");return}this.port.postMessage(t,r)},this.requestTimeout)}listen(){this.port.onmessage=t=>{!t.data||!t.data.__rpc||this.rpcProvider.dispatch(t.data,t)},this.closers.add(async()=>{this.port.close()})}};var on=m(z());var oe=class extends R{constructor(){super(3e4)}init(){this.rpcProvider=new on.RpcProvider((t,r)=>{window.parent.postMessage(t,"*",r)},this.requestTimeout)}};var sn=m(z());var se=class extends R{constructor(){super(3e4)}init(){this.rpcProvider=new sn.RpcProvider(async(r,n)=>{await navigator.serviceWorker.ready,navigator.serviceWorker.controller.postMessage(r,n)},this.requestTimeout);let t=r=>{!r.data||!r.data.__rpc||this.rpcProvider.dispatch(r.data,r)};navigator.serviceWorker.addEventListener("message",t),this.closers.add(async()=>{navigator.serviceWorker.removeEventListener("message",t)})}};var an=m(z());var Y=class extends R{constructor(){super(3e4)}init(){let t=null;Ps()&&(t=new BroadcastChannel("__playcode:preview")),this.rpcProvider=new an.RpcProvider(async n=>{t?.postMessage(n)},this.requestTimeout);let r=n=>{!n.data||!n.data.__rpc||this.rpcProvider.dispatch(n.data,n)};t?.addEventListener("message",r),this.closers.add(async()=>{t?.removeEventListener("message",r),t?.close()})}};function Ps(){if(!("BroadcastChannel"in self))return!1;try{return new BroadcastChannel("feature_test").close(),!0}catch{return!1}}var cn=class{constructor(){x(this,"silent");this.silent=!0}log(...t){if(this.silent)return;(h.console||console).log(...arguments)}debug(...t){if(this.silent)return;(h.console||console).debug(...arguments)}warn(...t){(h.console||console).warn(...arguments)}error(...t){(h.console||console).error(...arguments)}},Is=new cn,L=Is;var ln=`// based on
+// https://github.com/freeCodeCamp/freeCodeCamp/blob/1f880a552ddc222925971a8b1957109537efe9e8/client/src/utils/curriculum-helpers.ts
+
+const __getIsDeclaredAfter = (styleRule) => (selector) => {
+  var _a, _b, _c, _d
+  const cssStyleRules = (_b = Array.from(((_a = styleRule.parentStyleSheet) === null || _a === void 0 ? void 0 : _a.cssRules) || [])) === null || _b === void 0 ? void 0 : _b.filter(ele => ele.type === CSSRule.STYLE_RULE)
+  const previousStyleRule = cssStyleRules.find(ele => (ele === null || ele === void 0 ? void 0 : ele.selectorText) === selector)
+  if (!previousStyleRule)
+    return false
+  const currPosition = Array.from(((_c = styleRule.parentStyleSheet) === null || _c === void 0 ? void 0 : _c.cssRules) || []).indexOf(styleRule)
+  const prevPosition = Array.from(((_d = previousStyleRule === null || previousStyleRule === void 0 ? void 0 : previousStyleRule.parentStyleSheet) === null || _d === void 0 ? void 0 : _d.cssRules) || []).indexOf(previousStyleRule)
+  return currPosition > prevPosition
+}
+
+class __CSSHelp__ {
+  constructor(doc) {
+    this.doc = doc
+  }
+  
+  _getStyleRules() {
+    const styleSheet = this.getStyleSheet()
+    return this.styleSheetToCssRulesArray(styleSheet).filter(ele => ele.type === CSSRule.STYLE_RULE)
+  }
+  
+  getStyleDeclarations(selector) {
+    var _a
+    return (_a = this._getStyleRules()) === null || _a === void 0 ? void 0 : _a.filter(ele => (ele === null || ele === void 0 ? void 0 : ele.selectorText) === selector).map(x => x.style)
+  }
+  
+  getStyle(selector) {
+    var _a
+    const style = (_a = this._getStyleRules().find(ele => (ele === null || ele === void 0 ? void 0 : ele.selectorText) === selector)) === null || _a === void 0 ? void 0 : _a.style
+    if (!style)
+      return null
+    style.getPropVal = (prop, strip = false) => {
+      return strip
+        ? style.getPropertyValue(prop).replace(/\\s+/g, '')
+        : style.getPropertyValue(prop)
+    }
+    return style
+  }
+  
+  getStyleRule(selector) {
+    var _a
+    const styleRule = (_a = this._getStyleRules()) === null || _a === void 0 ? void 0 : _a.find(ele => (ele === null || ele === void 0 ? void 0 : ele.selectorText) === selector)
+    if (styleRule) {
+      return Object.assign(Object.assign({}, styleRule), {isDeclaredAfter: (selector) => __getIsDeclaredAfter(styleRule)(selector)})
+    } else {
+      return null
+    }
+  }
+  
+  getCSSRules(element) {
+    const styleSheet = this.getStyleSheet()
+    const cssRules = this.styleSheetToCssRulesArray(styleSheet)
+    switch (element) {
+      case 'media':
+        return cssRules.filter(ele => ele.type === CSSRule.MEDIA_RULE)
+      case 'fontface':
+        return cssRules.filter(ele => ele.type === CSSRule.FONT_FACE_RULE)
+      case 'import':
+        return cssRules.filter(ele => ele.type === CSSRule.IMPORT_RULE)
+      case 'keyframes':
+        return cssRules.filter(ele => ele.type === CSSRule.KEYFRAMES_RULE)
+      default:
+        return cssRules
+    }
+  }
+  
+  isPropertyUsed(property) {
+    return this._getStyleRules().some(ele => {
+      var _a
+      return (_a = ele.style) === null || _a === void 0 ? void 0 : _a.getPropertyValue(property)
+    })
+  }
+  
+  getRuleListsWithinMedia(mediaText) {
+    const medias = this.getCSSRules('media')
+    const cond = medias === null || medias === void 0 ? void 0 : medias.find(x => {
+      var _a
+      return ((_a = x === null || x === void 0 ? void 0 : x.media) === null || _a === void 0 ? void 0 : _a.mediaText) === mediaText
+    })
+    const cssRules = cond === null || cond === void 0 ? void 0 : cond.cssRules
+    return Array.from(cssRules || [])
+  }
+  
+  getStyleSheet() {
+    var _a, _b, _c, _d
+    // TODO: Change selector to match exactly 'styles.css'
+    const link = (_a = this.doc) === null || _a === void 0 ? void 0 : _a.querySelector('link[href*=\\'styles\\']')
+    // Most* browser extensions inject styles with class/media attributes
+    const style = (_b = this.doc) === null || _b === void 0 ? void 0 : _b.querySelector('style:not([class]):not([media])')
+    if ((_d = (_c = link === null || link === void 0 ? void 0 : link.sheet) === null || _c === void 0 ? void 0 : _c.cssRules) === null || _d === void 0 ? void 0 : _d.length) {
+      return link.sheet
+    } else if (style) {
+      return style.sheet
+    } else {
+      return null
+    }
+  }
+  
+  styleSheetToCssRulesArray(styleSheet) {
+    return Array.from((styleSheet === null || styleSheet === void 0 ? void 0 : styleSheet.cssRules) || [])
+  }
+}
+
+let __result__
+
+function assert(condition) {
+  __result__ = !!condition
+}
+
+assert.exists = (arg1) => {
+  __result__ = !!arg1
+}
+assert.notMatch = (arg1, regexp) => {
+  __result__ = !arg1.match(regexp)
+}
+assert.match = (arg1, regexp) => {
+  __result__ = arg1.match(regexp)
+}
+assert.equal = (arg1, arg2) => {
+  __result__ = arg1 === arg2
+}
+assert.deepEqual = (x, y) => {
+  if (x === y) {
+    return true
+  } else if (
+    typeof x == 'object' &&
+    x != null &&
+    typeof y == 'object' &&
+    y != null
+  ) {
+    if (Object.keys(x).length != Object.keys(y).length) return false
+    
+    for (var prop in x) {
+      if (y.hasOwnProperty(prop)) {
+        if (!assert.deepEqual(x[prop], y[prop])) return false
+      } else return false
+    }
+    
+    return true
+  } else return false
+}
+
+const __helpers = {
+  removeWhiteSpace: (str) => str.replace(/\\s/g, ''),
+  removeHtmlComments: (str) => str.replace(/<!--[\\s\\S]*?(-->|$)/g, ''),
+  removeCssComments: (str) => str.replace(/\\/\\*[\\s\\S]+?\\*\\//g, ''),
+  removeJSComments: (codeStr) => {
+    try {
+      // return strip(codeStr)
+      return codeStr
+    } catch (err) {
+      return codeStr
+    }
+  },
+  escapeRegExp: (exp) => exp.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&'),
+  isCalledWithNoArgs: (calledFuncName, callingCode) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    // const noCommentsCallingCode = strip(callingCode);
+    const noCommentsCallingCode = callingCode
+    const funcExp = \`^\\\\s*?\${__helpers.escapeRegExp(calledFuncName)}\\\\(\\\\s*?\\\\)\`
+    const matches = new RegExp(funcExp, 'gm').exec(noCommentsCallingCode) ?? []
+    
+    return !!matches.length
+  },
+  CSSHelp: __CSSHelp__
+}
+
+const errorIsParameter = /\\.catch\\((function\\(error\\){|error|\\(error\\)=>)/.test(__helpers.removeWhiteSpace(code))
+
+`;try{self["workbox:window:6.5.2"]&&_()}catch{}function un(e,t){return new Promise(function(r){var n=new MessageChannel;n.port1.onmessage=function(i){r(i.data)},e.postMessage(t,[n.port2])})}function pn(e,t){for(var r=0;r<t.length;r++){var n=t[r];n.enumerable=n.enumerable||!1,n.configurable=!0,"value"in n&&(n.writable=!0),Object.defineProperty(e,n.key,n)}}function fn(e,t){(t==null||t>e.length)&&(t=e.length);for(var r=0,n=new Array(t);r<t;r++)n[r]=e[r];return n}function Ns(e,t){var r;if(typeof Symbol>"u"||e[Symbol.iterator]==null){if(Array.isArray(e)||(r=function(i,o){if(i){if(typeof i=="string")return fn(i,o);var s=Object.prototype.toString.call(i).slice(8,-1);return s==="Object"&&i.constructor&&(s=i.constructor.name),s==="Map"||s==="Set"?Array.from(i):s==="Arguments"||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(s)?fn(i,o):void 0}}(e))||t&&e&&typeof e.length=="number"){r&&(e=r);var n=0;return function(){return n>=e.length?{done:!0}:{done:!1,value:e[n++]}}}throw new TypeError(`Invalid attempt to iterate non-iterable instance.
+In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`)}return(r=e[Symbol.iterator]()).next.bind(r)}try{self["workbox:core:6.5.2"]&&_()}catch{}var Fe=function(){var e=this;this.promise=new Promise(function(t,r){e.resolve=t,e.reject=r})};function Ue(e,t){var r=location.href;return new URL(e,r).href===new URL(t,r).href}var Q=function(e,t){this.type=e,Object.assign(this,t)};function ae(e,t,r){return r?t?t(e):e:(e&&e.then||(e=Promise.resolve(e)),t?e.then(t):e)}function ks(){}var As={type:"SKIP_WAITING"};function dn(e,t){if(!t)return e&&e.then?e.then(ks):Promise.resolve()}var gn=function(e){var t,r;function n(l,p){var a,c;return p===void 0&&(p={}),(a=e.call(this)||this).nn={},a.tn=0,a.rn=new Fe,a.en=new Fe,a.on=new Fe,a.un=0,a.an=new Set,a.cn=function(){var f=a.fn,u=f.installing;a.tn>0||!Ue(u.scriptURL,a.sn.toString())||performance.now()>a.un+6e4?(a.vn=u,f.removeEventListener("updatefound",a.cn)):(a.hn=u,a.an.add(u),a.rn.resolve(u)),++a.tn,u.addEventListener("statechange",a.ln)},a.ln=function(f){var u=a.fn,g=f.target,v=g.state,E=g===a.vn,H={sw:g,isExternal:E,originalEvent:f};!E&&a.mn&&(H.isUpdate=!0),a.dispatchEvent(new Q(v,H)),v==="installed"?a.wn=self.setTimeout(function(){v==="installed"&&u.waiting===g&&a.dispatchEvent(new Q("waiting",H))},200):v==="activating"&&(clearTimeout(a.wn),E||a.en.resolve(g))},a.dn=function(f){var u=a.hn,g=u!==navigator.serviceWorker.controller;a.dispatchEvent(new Q("controlling",{isExternal:g,originalEvent:f,sw:u,isUpdate:a.mn})),g||a.on.resolve(u)},a.gn=(c=function(f){var u=f.data,g=f.ports,v=f.source;return ae(a.getSW(),function(){a.an.has(v)&&a.dispatchEvent(new Q("message",{data:u,originalEvent:f,ports:g,sw:v}))})},function(){for(var f=[],u=0;u<arguments.length;u++)f[u]=arguments[u];try{return Promise.resolve(c.apply(this,f))}catch(g){return Promise.reject(g)}}),a.sn=l,a.nn=p,navigator.serviceWorker.addEventListener("message",a.gn),a}r=e,(t=n).prototype=Object.create(r.prototype),t.prototype.constructor=t,t.__proto__=r;var i,o,s,y=n.prototype;return y.register=function(l){var p=(l===void 0?{}:l).immediate,a=p!==void 0&&p;try{var c=this;return function(f,u){var g=f();return g&&g.then?g.then(u):u(g)}(function(){if(!a&&document.readyState!=="complete")return dn(new Promise(function(f){return window.addEventListener("load",f)}))},function(){return c.mn=Boolean(navigator.serviceWorker.controller),c.yn=c.pn(),ae(c.bn(),function(f){c.fn=f,c.yn&&(c.hn=c.yn,c.en.resolve(c.yn),c.on.resolve(c.yn),c.yn.addEventListener("statechange",c.ln,{once:!0}));var u=c.fn.waiting;return u&&Ue(u.scriptURL,c.sn.toString())&&(c.hn=u,Promise.resolve().then(function(){c.dispatchEvent(new Q("waiting",{sw:u,wasWaitingBeforeRegister:!0}))}).then(function(){})),c.hn&&(c.rn.resolve(c.hn),c.an.add(c.hn)),c.fn.addEventListener("updatefound",c.cn),navigator.serviceWorker.addEventListener("controllerchange",c.dn),c.fn})})}catch(f){return Promise.reject(f)}},y.update=function(){try{return this.fn?dn(this.fn.update()):void 0}catch(l){return Promise.reject(l)}},y.getSW=function(){return this.hn!==void 0?Promise.resolve(this.hn):this.rn.promise},y.messageSW=function(l){try{return ae(this.getSW(),function(p){return un(p,l)})}catch(p){return Promise.reject(p)}},y.messageSkipWaiting=function(){this.fn&&this.fn.waiting&&un(this.fn.waiting,As)},y.pn=function(){var l=navigator.serviceWorker.controller;return l&&Ue(l.scriptURL,this.sn.toString())?l:void 0},y.bn=function(){try{var l=this;return function(p,a){try{var c=p()}catch(f){return a(f)}return c&&c.then?c.then(void 0,a):c}(function(){return ae(navigator.serviceWorker.register(l.sn,l.nn),function(p){return l.un=performance.now(),p})},function(p){throw p})}catch(p){return Promise.reject(p)}},i=n,(o=[{key:"active",get:function(){return this.en.promise}},{key:"controlling",get:function(){return this.on.promise}}])&&pn(i.prototype,o),s&&pn(i,s),n}(function(){function e(){this.Pn=new Map}var t=e.prototype;return t.addEventListener=function(r,n){this.Sn(r).add(n)},t.removeEventListener=function(r,n){this.Sn(r).delete(n)},t.dispatchEvent=function(r){r.target=this;for(var n,i=Ns(this.Sn(r.type));!(n=i()).done;)(0,n.value)(r)},t.Sn=function(r){return this.Pn.has(r)||this.Pn.set(r,new Set),this.Pn.get(r)},e}());async function yn(){let e=new gn(Ge,{scope:"/"});return e.addEventListener("waiting",t=>{console.log("A new service worker has installed, but it can't activateuntil all tabs running the current version have fully unloaded.")}),e.register({immediate:!1}).then(t=>{}),await e.active}b.intervalIds=[];b.timeoutIds=[];function Ms(){b.intervalIds.forEach(e=>clearInterval(e))}function qs(){b.timeoutIds.forEach(e=>clearTimeout(e))}function Ls(){if(!window.setInterval.__original){let e=setInterval;window.setInterval=function(){let r=e.apply(this,arguments);return b.intervalIds.push(r),r},window.setInterval.__original=e;let t=clearInterval;window.clearInterval=function(r){return t.apply(this,arguments),b.intervalIds=b.intervalIds.filter(n=>n!==r),r}}}function Ws(){if(!window.setTimeout.__original){let e=setTimeout;window.setTimeout=function(){let r=e.apply(this,arguments);return b.timeoutIds.push(r),r},window.setTimeout.__original=e;let t=clearTimeout;window.clearTimeout=function(r){return t.apply(this,arguments),b.timeoutIds=b.timeoutIds.filter(n=>n!==r),r}}}function hn({files:e,defaultEntryPath:t}){window.stop(),Ms(),qs(),document.open(),h.previewLoaded=!0,Ls(),Ws(),Xr("window",window),document.write(e[t].value),document.close()}function $s(e){return new RegExp(`(.*?)(${e.join("|").replace(/\./g,"\\.")})(?:[?#]|$)`,"i")}var Ds=[".css",".scss",".sass",".less"],mn=$s(Ds);function vn(){return b.modules||{}}function _n(e,t){t=Be(t),mn.test(e)?t=Fs(e,Be(t)):t=Be(t);let r=document.createElement("script");r.setAttribute("path",e),r.textContent=t,document.body.appendChild(r)}function Fs(e,t){return t=`${Us};
+const code = ${JSON.stringify(t)};
+__injectStyle__(code);return code;`,`window[Symbol.for('__modules__')] = window[Symbol.for('__modules__')] || {};
+  window[Symbol.for('__modules__')]['${e}'] = () => {
+    ${t}
+  }`}function Be(e){return e?(e=e.replaceAll("<!--","<\\!--"),e=e.replaceAll("<script","<\\script"),e=e.replaceAll("<\/script","<\\/script"),e):""}var Us=`function __injectStyle__(v) {
+  const s = document.createElement('style')
+  s.textContent = v
+  document.head.append(s)
+}`;L.silent=!0;var W={playcodeUpdateWindow:async({files:e,defaultEntryPath:t})=>{let r=e[t].dependencies;if(r){let n=vn(),i=r.filter(o=>!n[o]);if(i.length){let o;ue?o=await h.rpcApp.rpcRaw("getTranspiledDependencies",{pathsWithVersion:i}):o=await h.rpcPreviewWindow.rpcRaw("getTranspiledDependencies",{pathsWithVersion:i}),o.forEach(s=>{if(!s){L.warn("Module does not exist",s),L.debug("newModules",o);return}_n(s.path,s.value)})}}hn({files:e,defaultEntryPath:t})},playcodeProxyLogs:()=>{Z||(h.console=Vr(["log","warn","info","error","trace","debug","table","dir","time","timeEnd","clear"],(e,t)=>{if(!h.rpcApp)return;let r=Me(e,t);r&&h.rpcApp.signalRaw("preview:log",r)}))},playcodeProxyErrors:()=>{Z||(window.onerror=async(e,t,r,n,i)=>{if(!h.rpcApp)return;let o=Me("error",[i]);o&&h.rpcApp.signalRaw("preview:log",o)})}};async function Gs(){if(h.previewLoaded)W.playcodeProxyErrors(),h.rpcApp.signalRaw("preview:start");else{if(!await yn()){L.warn("Service worker is not ready.");return}Jr("window",window),W.playcodeProxyErrors(),W.playcodeProxyLogs(),await Js()}}function Ks(){h.previewLoaded||(h.rpcPreviewWindow=new Y,h.rpcPreviewWindow.registerSignalHandler("preview:update",e=>{W.playcodeUpdateWindow(e)}),h.rpcPreviewWindow.rpcRaw("getLastBuildResult",{pathname:location.pathname}).then(e=>{e&&W.playcodeUpdateWindow(e)}).catch(e=>{L.warn("getLastBuildResult",e)}))}ue&&Gs();Z&&Ks();async function Js(){h.rpcApp=new ie,h.rpcGlobalApp=new oe,h.rpcServiceWorker=new se,h.rpcPreviewWindow=new Y,h.rpcApp.registerSignalHandler("preview:update",async r=>{h.rpcPreviewWindow.signalRaw("preview:update",r),W.playcodeUpdateWindow(r)}),h.rpcApp.registerRpcHandler("log:attr:get",async({attrId:r})=>Gr(r)),h.rpcApp.registerRpcHandler("learn:tests:run",async({tests:r,srcFiles:n})=>{let i=[],o=Object.values(n).filter(s=>!s.isBinary).map(s=>s.value).join(`
+`);for(let s of r)try{let l=new Function("code",ln+`;
+`+s.testCode+" return __result__")(o);i.push({description:s.description,passed:l,err:null})}catch(y){console.warn(`Unable to run test: "${s.description}". Error: ${y.message}`),i.push({description:s.description,passed:!1,err:y.message})}return i}),h.rpcPreviewWindow.registerRpcHandler("getLastBuildResult",r=>h.rpcApp.rpcRaw("getLastBuildResult",r)),h.rpcPreviewWindow.registerRpcHandler("getTranspiledDependencies",r=>h.rpcApp.rpcRaw("getTranspiledDependencies",r));let e=new MessageChannel,t=new MessageChannel;h.rpcApp.port=t.port1,h.rpcApp.listen(),h.rpcGlobalApp.signalRaw("preview:init",{pathname:window.location.pathname},[t.port2,e.port2]),h.rpcServiceWorker.signalRaw("sw:init",{},[e.port1])}})();
+
+      </script>
+</head>
+<body>
+
+</body>
